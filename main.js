@@ -1,32 +1,42 @@
 const fs = require('fs');
 const path = require('path');
+const util = require('util');
 
-let srcDir = './src';
+const link = util.promisify(fs.link);
+
+const srcDir = './src';
+const targetDir = path.join(__dirname, './dest');
+let fileCounter = 0;
+
+async function managePath (fileId, fileName) {
+    let stat = fs.statSync(path.resolve(fileId));
+    if (!stat.isDirectory()) {
+        let newElementPath = path.join(targetDir, fileName[0]);
+        if (!fs.existsSync(newElementPath)) {
+            fs.mkdirSync(newElementPath);
+        }
+        await link(fileId, path.join(newElementPath, fileName));
+        fileCounter++
+    } else {
+        await readDir(fileId);
+    }
+}
 
 const readDir = (source) => {
-    const files = fs.readdirSync(source);
-    let targetDir = path.join(__dirname, './dest');
-    if (!fs.existsSync(targetDir)) {
-        fs.mkdirSync(targetDir);
-    }
-    files.forEach(elem => {
-        let elemPath = path.join(source, elem);
-        let stat = fs.statSync(elemPath);
-        if (!stat.isDirectory()) {
-            let newElementPath = path.join(targetDir, elem[0]);
-            if (!fs.existsSync(path.join(targetDir, elem[0]))) {
-                fs.mkdirSync(path.join(targetDir, elem[0]));
-            }
-            fs.link(path.join(__dirname, elemPath), path.join(newElementPath, elem), err => {
-                if (err) {
-                    console.error(err.message);
-                    return;
-                }
-            });
-        } else {
-            readDir(path.join(source,elem));
+    return new Promise((resolve, reject) => {
+        const currentDir = path.resolve(source);
+        const files = fs.readdirSync(currentDir);
+        if (!fs.existsSync(targetDir)) {
+            fs.mkdirSync(targetDir);
         }
+        const promiseList = [];
+        files.forEach((file) => {
+            promiseList.push(managePath(path.join(currentDir, file), file));
+        })
+        resolve(Promise.all(promiseList));
     })
 }
 
-readDir(srcDir);
+readDir(srcDir).then(() => {
+    console.log(`Find and sort ${fileCounter} files`);
+});
